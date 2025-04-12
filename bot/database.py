@@ -14,9 +14,10 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     tg_id = Column(BigInteger, unique=True)
     name = Column(String)
-    birthday = Column(Date)  # Лучше использовать тип Date
+    birthday = Column(Date)
     phone = Column(String)
     is_paid = Column(Boolean, default=False)
+    has_received_pdf = Column(Boolean, default=False)  # Флаг для проверки, получал ли пользователь PDF
 
 
 # Подключение к БД
