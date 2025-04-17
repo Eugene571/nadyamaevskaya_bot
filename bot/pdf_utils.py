@@ -11,7 +11,7 @@ async def send_pdf_to_user(update, context, filename):
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename=filename,
-                caption="Вот ваш файл 📄"
+                caption="Вот твой файл 📄"
             )
     except FileNotFoundError:
         await update.message.reply_text("Файл не найден 😥")
