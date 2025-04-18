@@ -10,7 +10,7 @@ import httpx
 timeout = httpx.Timeout(60.0)  # Установка тайм-аута в 60 секунд
 client = httpx.AsyncClient(timeout=timeout)
 
-ASK_NAME, ASK_BIRTHDAY, ASK_PHONE, ASK_FILE_SELECTION = range(4)
+ASK_NAME, ASK_BIRTHDAY, CONFIRM_BIRTHDAY, ASK_PHONE, CONFIRM_PHONE, ASK_FILE_SELECTION = range(6)
 
 
 # Обработчики
@@ -26,9 +26,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_data:  # Если пользователь существует, сразу переходим к выбору файла
         name = user_data["name"]
         await update.message.reply_text(f"Привет, {name}! Ты уже зарегистрирован(а)!" + " \n " + " \n "
-        "У меня есть для тебя астро-методички, которые улучшат разные сферы жизни: \n" + "\n"
-        "1. «ПРОЯВЛЕННОСТЬ» ☀️\nТы узнаешь, как стать заметнее для мира, привлекать удачу и быть уверенным в себе человеком \n" + "\n"
-        "2. «КАК ВЛЮБИТЬ МУЖЧИНУ» 💖\nИспользуя определенные лайфхаки, ты западаешь возлюбленному в самое сердечко \n" + "\n"
+                                                                                                 "У меня есть для тебя астро-методички, которые улучшат разные сферы жизни: \n" + "\n"
+                                                                                                                                                                                  "1. «ПРОЯВЛЕННОСТЬ» ☀️\nТы узнаешь, как стать заметнее для мира, привлекать удачу и быть уверенным в себе человеком \n" + "\n"
+                                                                                                                                                                                                                                                                                                            "2. «КАК ВЛЮБИТЬ МУЖЧИНУ» 💖\nИспользуя определенные лайфхаки, ты западаешь возлюбленному в самое сердечко \n" + "\n"
                                         )
         keyboard = ReplyKeyboardMarkup([
             ["«ПРОЯВЛЕННОСТЬ» ☀️"],
@@ -56,37 +56,80 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birthday"] = update.message.text
-    await update.message.reply_text("И наконец, твой номер телефона:")
-    return ASK_PHONE
+
+    # Кнопки подтверждения
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("ДА", callback_data="confirm_birthday_yes")],
+        [InlineKeyboardButton("НЕТ", callback_data="confirm_birthday_no")]
+    ])
+    await update.message.reply_text(
+        f"Твоя дата рождения {context.user_data['birthday']}, верно?",
+        reply_markup=keyboard
+    )
+    return CONFIRM_BIRTHDAY
+
+
+async def confirm_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_birthday_yes":
+        await query.message.reply_text("Теперь укажи номер телефона:")
+        return ASK_PHONE
+    else:
+        await query.message.reply_text("Хорошо, укажи дату рождения ещё раз (ДД.ММ.ГГГГ):")
+        return ASK_BIRTHDAY
 
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_phone = update.message.text
     phone = normalize_phone_number(raw_phone)
+
     if not phone:
         await update.message.reply_text("Не удалось распознать номер. Попробуй ещё раз:")
         return ASK_PHONE
 
-    tg_id = update.effective_user.id
-    save_user_data(
-        tg_id,
-        name=context.user_data["name"],
-        birthday=context.user_data["birthday"],
-        phone=phone,
-    )
-    await update.message.reply_text("Спасибо!🥰 \n ")
+    context.user_data["phone"] = phone
 
-    keyboard = ReplyKeyboardMarkup([
-        ["«ПРОЯВЛЕННОСТЬ» ☀️"],
-        ["«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖"]
-    ], resize_keyboard=True, one_time_keyboard=True)
-
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("ДА", callback_data="confirm_phone_yes")],
+        [InlineKeyboardButton("НЕТ", callback_data="confirm_phone_no")]
+    ])
     await update.message.reply_text(
-        "Выбери методичку, которую хочешь получить 👇",
+        f"Твой номер телефона {phone}, верно?",
         reply_markup=keyboard
     )
+    return CONFIRM_PHONE
 
-    return ASK_FILE_SELECTION
+
+async def confirm_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_phone_yes":
+        tg_id = query.from_user.id
+        save_user_data(
+            tg_id,
+            name=context.user_data["name"],
+            birthday=context.user_data["birthday"],
+            phone=context.user_data["phone"],
+        )
+        await query.message.reply_text("Спасибо!🥰")
+
+        keyboard = ReplyKeyboardMarkup([
+            ["«ПРОЯВЛЕННОСТЬ» ☀️"],
+            ["«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖"]
+        ], resize_keyboard=True, one_time_keyboard=True)
+
+        await query.message.reply_text(
+            "Выбери методичку, которую хочешь получить 👇",
+            reply_markup=keyboard
+        )
+        return ASK_FILE_SELECTION
+
+    else:
+        await query.message.reply_text("Укажи номер телефона ещё раз:")
+        return ASK_PHONE
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,25 +185,23 @@ async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await send_pdf_to_user(update, context, filename)
 
-        # Отправка рекомендаций (если ещё не получал)
+    # Отправка рекомендаций (если ещё не получал)
     if not user_data.has_received_pdf:
         if file_id == '1':
             await update.message.reply_text("Используй рекомендации и сияй! ✨\n\n"
-                "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"+"Ты всё найдешь в закреплённом посте \"Навигация\""+"\n"
-                "\nhttps://t.me/nadyamaevskayaa"
-            )
+                                            "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n" + "Ты всё найдешь в закреплённом посте \"Навигация\"" + "\n"
+                                                                                                                                                                                                                                                  "\nhttps://t.me/nadyamaevskayaa"
+                                            )
         elif file_id == '2':
             await update.message.reply_text(
                 "Удачи в любви! 💕\n\n"
-                "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"+"Ты всё найдешь в закреплённом посте \"Навигация\""+"\n"
-                "\nhttps://t.me/nadyamaevskayaa"
+                "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n" + "Ты всё найдешь в закреплённом посте \"Навигация\"" + "\n"
+                                                                                                                                                                                                                      "\nhttps://t.me/nadyamaevskayaa"
             )
         with get_session() as session:
             user_in_session = session.query(User).filter_by(tg_id=tg_id).first()
             user_in_session.has_received_pdf = True
             session.commit()
-
-
 
     # После отправки PDF — inline-кнопки Да/Нет
     await update.message.reply_text("Хочешь получить другой файл?", reply_markup=InlineKeyboardMarkup([
@@ -177,10 +218,12 @@ def register_handlers(app):
         states={
             ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             ASK_BIRTHDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_birthday)],
+            CONFIRM_BIRTHDAY: [CallbackQueryHandler(confirm_birthday, pattern='^confirm_birthday_')],
             ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+            CONFIRM_PHONE: [CallbackQueryHandler(confirm_phone, pattern='^confirm_phone_')],
             ASK_FILE_SELECTION: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_pdf),
-                CallbackQueryHandler(handle_file_selection, pattern='^(yes|no)$')  # <-- оставить только здесь
+                CallbackQueryHandler(handle_file_selection, pattern='^(yes|no)$')
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
