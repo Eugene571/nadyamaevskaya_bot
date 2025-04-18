@@ -7,7 +7,14 @@ import logging
 from telegram.ext import ContextTypes
 
 # Логирование ошибок
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()  # чтобы ещё и в консоль выводилось
+    ]
+)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
