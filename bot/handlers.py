@@ -8,6 +8,7 @@ from bot.database import save_user_data, create_user_if_not_exists, get_user_dat
 from bot.phone_utils import normalize_phone_number
 from bot.database import get_session, User
 import httpx
+import uuid
 
 PDF_DIR = os.environ.get("PDF_DIR")
 ADMIN_IDS = [247176848, 888919788]
@@ -165,9 +166,12 @@ async def handle_file_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 def generate_file_keyboard():
+    if not PDF_DIR:
+        raise ValueError("Переменная окружения PDF_DIR не установлена")
     files = [f for f in os.listdir(PDF_DIR) if f.endswith(".pdf")]
     buttons = [[file.replace(".pdf", "")] for file in files]  # 1 файл — 1 кнопка
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
 
 
 async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,9 +211,7 @@ async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Присоединяйся в наше дружное сообщество.Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"
             "Ты всё найдешь в закреплённом посте \"Навигация\"\n\n"
             "https://t.me/nadyamaevskayaa"
-        )
-
-
+        ),
     }
 
     if not user_data.has_received_pdf and text in recommendations:
