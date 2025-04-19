@@ -244,15 +244,21 @@ async def upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Получение PDF-документа и его сохранение в /pdfs
 async def save_uploaded_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
-    if not document.file_name.endswith('.pdf'):
+
+    # Генерация имени, если file_name отсутствует
+    file_name = document.file_name or f"{uuid.uuid4()}.pdf"
+
+    # Проверка расширения
+    if not file_name.lower().endswith('.pdf'):
         await update.message.reply_text("Можно загружать только PDF-файлы.")
         return WAITING_FOR_FILE
 
+    # Загрузка файла
     file = await context.bot.get_file(document.file_id)
-    file_path = os.path.join(PDF_DIR, document.file_name)
+    file_path = os.path.join(PDF_DIR, file_name)
 
     await file.download_to_drive(file_path)
-    await update.message.reply_text(f"Файл '{document.file_name}' сохранён успешно! ✅")
+    await update.message.reply_text(f"Файл '{file_name}' сохранён успешно! ✅")
     return ConversationHandler.END
 
 
