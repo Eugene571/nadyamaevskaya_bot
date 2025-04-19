@@ -143,19 +143,16 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_file_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # <<< это обязательно
+    await query.answer()
 
     tg_id = query.from_user.id
     print(f"Button clicked: {query.data}")
 
     if query.data == 'yes':
-        keyboard = ReplyKeyboardMarkup([
-            ["«ПРОЯВЛЕННОСТЬ» ☀️"],
-            ["«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖"]
-        ], resize_keyboard=True, one_time_keyboard=True)
-
+        # Перенаправление на состояние выбора файла
+        keyboard = generate_file_keyboard()
         await query.message.reply_text(
-            "Выбери другую методичку 👇",
+            "Выбери методичку, которую хочешь получить 👇",
             reply_markup=keyboard
         )
         return ASK_FILE_SELECTION
