@@ -204,7 +204,15 @@ async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"
             "Ты всё найдешь в закреплённом посте \"Навигация\"\n\n"
             "https://t.me/nadyamaevskayaa"
+        ),
+        "«ТАЛАНТЫ ОТ ЖЕНЩИН РОДА» 🌙": (
+            "Ты узнаешь, какие таланты тебе передались от женщин рода и что произойдет, если их не использовать 🌙"+"\n"+"\n"+
+            "Присоединяйся в наше дружное сообщество.Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"
+            "Ты всё найдешь в закреплённом посте \"Навигация\"\n\n"
+            "https://t.me/nadyamaevskayaa"
         )
+
+
     }
 
     if not user_data.has_received_pdf and text in recommendations:
@@ -251,7 +259,47 @@ async def save_uploaded_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 
+async def delete_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("У тебя нет прав для удаления файлов.")
+        return
+
+    # Получаем список всех PDF-файлов в директории
+    files = [f for f in os.listdir(PDF_DIR) if f.endswith(".pdf")]
+
+    if not files:
+        await update.message.reply_text("Нет файлов для удаления.")
+        return
+
+    # Создаём клавиатуру с кнопками для каждого файла
+    buttons = [
+        [InlineKeyboardButton(file, callback_data=f"delete_{file}")]
+        for file in files
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    await update.message.reply_text("Выбери файл для удаления:", reply_markup=keyboard)
+
+
+async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    file_name = query.data.replace("delete_", "")
+    file_path = os.path.join(PDF_DIR, file_name)
+
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        await query.message.reply_text(f"Файл '{file_name}' удалён успешно! ✅")
+    else:
+        await query.message.reply_text(f"Файл '{file_name}' не найден.")
+
+    return ConversationHandler.END
+
+
 def register_handlers(app):
+    # Обработчик для команды /start и последующих состояний
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -268,6 +316,7 @@ def register_handlers(app):
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    # Обработчик для загрузки файлов /upload
     upload_handler = ConversationHandler(
         entry_points=[CommandHandler("upload", upload_file)],
         states={
@@ -276,5 +325,12 @@ def register_handlers(app):
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    # Обработчик для удаления файлов /delete
+    delete_handler = CommandHandler("delete", delete_file)
+    delete_confirm_handler = CallbackQueryHandler(confirm_delete, pattern="^delete_")
+
+    # Добавляем все обработчики в приложение
     app.add_handler(conversation_handler)
     app.add_handler(upload_handler)
+    app.add_handler(delete_handler)
+    app.add_handler(delete_confirm_handler)
