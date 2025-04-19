@@ -1,3 +1,5 @@
+import os
+
 from telegram.ext import CommandHandler, ConversationHandler, MessageHandler, filters
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
@@ -7,9 +9,13 @@ from bot.phone_utils import normalize_phone_number
 from bot.database import get_session, User
 import httpx
 
+PDF_DIR = os.environ.get("PDF_DIR")
+ADMIN_IDS = [247176848, 888919788]
+
 timeout = httpx.Timeout(60.0)  # Установка тайм-аута в 60 секунд
 client = httpx.AsyncClient(timeout=timeout)
 
+WAITING_FOR_FILE = "WAITING_FOR_FILE"
 ASK_NAME, ASK_BIRTHDAY, CONFIRM_BIRTHDAY, ASK_PHONE, CONFIRM_PHONE, ASK_FILE_SELECTION = range(6)
 
 
@@ -30,10 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                                                                                                                                                                   "1. «ПРОЯВЛЕННОСТЬ» ☀️\nТы узнаешь, как стать заметнее для мира, привлекать удачу и быть уверенным в себе человеком \n" + "\n"
                                                                                                                                                                                                                                                                                                             "2. «КАК ВЛЮБИТЬ МУЖЧИНУ» 💖\nИспользуя определённые лайфхаки, ты западёшь возлюбленному в самое сердечко \n" + "\n"
                                         )
-        keyboard = ReplyKeyboardMarkup([
-            ["«ПРОЯВЛЕННОСТЬ» ☀️"],
-            ["«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖"]
-        ], resize_keyboard=True, one_time_keyboard=True)
+        keyboard = generate_file_keyboard()
         await update.message.reply_text(
             "Выбери методичку, которую хочешь получить 👇",
             reply_markup=keyboard
@@ -164,6 +167,12 @@ async def handle_file_selection(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
 
+def generate_file_keyboard():
+    files = [f for f in os.listdir(PDF_DIR) if f.endswith(".pdf")]
+    buttons = [[file.replace(".pdf", "")] for file in files]  # 1 файл — 1 кнопка
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=True)
+
+
 async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     tg_id = update.effective_user.id
@@ -172,44 +181,74 @@ async def get_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with get_session() as session:
         user_data = session.query(User).filter_by(tg_id=tg_id).first()
 
-    # Определяем, какой файл отправить
-    if text in ['1', '«ПРОЯВЛЕННОСТЬ» ☀️']:
-        filename = "Проявленность.pdf"
-        file_id = '1'
-    elif text in ['2', '«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖']:
-        filename = "Как влюбить мужчину.pdf"
-        file_id = '2'
-    else:
-        await update.message.reply_text("Пожалуйста, выбери методичку из списка.")
+    # Определяем путь к файлу
+    filename = f"{text}.pdf"
+    file_path = os.path.join(PDF_DIR, filename)
+
+    if not os.path.exists(file_path):
+        await update.message.reply_text("Такой методички нет. Пожалуйста, выбери из списка.")
         return ASK_FILE_SELECTION
 
     await send_pdf_to_user(update, context, filename)
 
-    # Отправка рекомендаций (если ещё не получал)
-    if not user_data.has_received_pdf:
-        if file_id == '1':
-            await update.message.reply_text("Используй рекомендации и сияй! ✨\n\n"
-                                            "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек 👇🏻\n\n" + "Ты всё найдешь в закреплённом посте \"Навигация\"" + "\n"
-                                                                                                                                                                                                                                                  "\nhttps://t.me/nadyamaevskayaa"
-                                            )
-        elif file_id == '2':
-            await update.message.reply_text(
-                "Удачи в любви! 💕\n\n"
-                "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n" + "Ты всё найдешь в закреплённом посте \"Навигация\"" + "\n"
-                                                                                                                                                                                                                      "\nhttps://t.me/nadyamaevskayaa"
-            )
+    # Рекомендации при первой отправке
+    recommendations = {
+        "«ПРОЯВЛЕННОСТЬ» ☀️": (
+            "Используй рекомендации и сияй! ✨\n\n"
+            "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек 👇🏻\n\n"
+            "Ты всё найдешь в закреплённом посте \"Навигация\"\n\n"
+            "https://t.me/nadyamaevskayaa"
+        ),
+        "«КАК ВЛЮБИТЬ МУЖЧИНУ» 💖": (
+            "Удачи в любви! 💕\n\n"
+            "И присоединяйся в наше дружное сообщество. Там море полезностей от меня: ежедневные прогнозы, подкасты и ещё больше астро-методичек ✨👇🏻\n\n"
+            "Ты всё найдешь в закреплённом посте \"Навигация\"\n\n"
+            "https://t.me/nadyamaevskayaa"
+        )
+    }
+
+    if not user_data.has_received_pdf and text in recommendations:
+        await update.message.reply_text(recommendations[text])
         with get_session() as session:
             user_in_session = session.query(User).filter_by(tg_id=tg_id).first()
             user_in_session.has_received_pdf = True
             session.commit()
 
-    # После отправки PDF — inline-кнопки Да/Нет
-    await update.message.reply_text("Хочешь получить другой файл?", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("Да", callback_data='yes')],
-        [InlineKeyboardButton("Нет", callback_data='no')]
-    ]))
+    # Кнопки "Да / Нет" после отправки
+    await update.message.reply_text(
+        "Хочешь получить другой файл?",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Да", callback_data='yes')],
+            [InlineKeyboardButton("Нет", callback_data='no')]
+        ])
+    )
 
     return ASK_FILE_SELECTION
+
+
+async def upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("У тебя нет прав для загрузки файлов.")
+        return ConversationHandler.END
+
+    await update.message.reply_text("Отправь мне PDF-файл, и я его сохраню 📎")
+    return WAITING_FOR_FILE
+
+
+# Получение PDF-документа и его сохранение в /pdfs
+async def save_uploaded_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    if not document.file_name.endswith('.pdf'):
+        await update.message.reply_text("Можно загружать только PDF-файлы.")
+        return WAITING_FOR_FILE
+
+    file = await context.bot.get_file(document.file_id)
+    file_path = os.path.join(PDF_DIR, document.file_name)
+
+    await file.download_to_drive(file_path)
+    await update.message.reply_text(f"Файл '{document.file_name}' сохранён успешно! ✅")
+    return ConversationHandler.END
 
 
 def register_handlers(app):
@@ -229,5 +268,13 @@ def register_handlers(app):
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    # Только один handler: ConversationHandler
+    upload_handler = ConversationHandler(
+        entry_points=[CommandHandler("upload", upload_file)],
+        states={
+            WAITING_FOR_FILE: [MessageHandler(filters.Document.PDF, save_uploaded_file)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(conversation_handler)
+    app.add_handler(upload_handler)
